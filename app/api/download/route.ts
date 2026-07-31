@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
+import AdmZip from "adm-zip";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isExpired } from "@/lib/licenses";
+import { signLicensePayload } from "@/lib/license-signing";
+
+export const runtime = "nodejs";
 
 export async function GET() {
   const supabase = await createClient();
@@ -40,15 +44,29 @@ export async function GET() {
 
   const { data: profile } = await admin.from("profiles").select("username").eq("id", user.id).single();
   const safeUsername = (profile?.username ?? "Voxy").replace(/[^a-zA-Z0-9_-]/g, "");
-  const filename = `${safeUsername}-Voxy.jar`;
+  const filename = `${safeUsername}-cobalt.${release.version}.jar`;
 
-  const { data: signed, error: signedError } = await admin.storage
+  const { data: jarBlob, error: downloadError } = await admin.storage
     .from("client-builds")
-    .createSignedUrl(release.file_path, 60, { download: filename });
+    .download(release.file_path);
 
-  if (signedError || !signed) {
-    return NextResponse.json({ error: "Failed to generate download link." }, { status: 500 });
+  if (downloadError || !jarBlob) {
+    return NextResponse.json({ error: "Failed to load the release build." }, { status: 500 });
   }
+
+  // Stamp a signed, per-user license file into the jar so the client can verify its own
+  // entitlement (including expiry) without needing the user to enter a key manually.
+  const signedLicense = signLicensePayload({
+    licenseId: activeLicense.id,
+    username: safeUsername,
+    expiresAt: activeLicense.expires_at,
+    issuedAt: new Date().toISOString(),
+  });
+
+  const jarBuffer = Buffer.from(await jarBlob.arrayBuffer());
+  const zip = new AdmZip(jarBuffer);
+  zip.addFile("cobalt-license.json", Buffer.from(JSON.stringify(signedLicense)));
+  const stampedJar = zip.toBuffer();
 
   await admin.from("downloads").insert({
     user_id: user.id,
@@ -56,5 +74,11 @@ export async function GET() {
     filename,
   });
 
-  return NextResponse.redirect(signed.signedUrl);
+  return new NextResponse(new Uint8Array(stampedJar), {
+    headers: {
+      "Content-Type": "application/java-archive",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Length": String(stampedJar.length),
+    },
+  });
 }

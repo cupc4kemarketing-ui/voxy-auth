@@ -1,12 +1,16 @@
 import type { LicenseDuration } from "@/types/database";
 
 export const DURATION_LABELS: Record<LicenseDuration, string> = {
+  "1_day": "1 Day",
+  "7_days": "7 Days",
   "14_days": "14 Days",
   "30_days": "30 Days",
   lifetime: "Lifetime",
 };
 
 export const DURATION_DAYS: Record<LicenseDuration, number | null> = {
+  "1_day": 1,
+  "7_days": 7,
   "14_days": 14,
   "30_days": 30,
   lifetime: null,

@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { generateLicenseKey } from "@/lib/licenses";
 import type { LicenseDuration } from "@/types/database";
 
-const VALID_DURATIONS: LicenseDuration[] = ["14_days", "30_days", "lifetime"];
+const VALID_DURATIONS: LicenseDuration[] = ["1_day", "7_days", "14_days", "30_days", "lifetime"];
 
 export async function POST(request: Request) {
   const ctx = await getSessionContext();
@@ -32,6 +32,7 @@ export async function POST(request: Request) {
   const { data, error } = await admin.from("license_keys").insert(rows).select("*");
 
   if (error) {
+    console.error("Failed to insert license_keys:", error);
     return NextResponse.json({ error: "Failed to generate keys." }, { status: 500 });
   }
 

@@ -20,7 +20,7 @@ import { DURATION_LABELS } from "@/lib/licenses";
 import type { LicenseDuration } from "@/types/database";
 import type { LicenseKeyWithProfile } from "@/types/admin";
 
-const DURATIONS: LicenseDuration[] = ["14_days", "30_days", "lifetime"];
+const DURATIONS: LicenseDuration[] = ["1_day", "7_days", "14_days", "30_days", "lifetime"];
 
 export function CreateKeysDialog({ onCreated }: { onCreated: (keys: LicenseKeyWithProfile[]) => void }) {
   const [open, setOpen] = useState(false);
@@ -68,14 +68,14 @@ export function CreateKeysDialog({ onCreated }: { onCreated: (keys: LicenseKeyWi
         <div className="flex flex-col gap-5">
           <div className="flex flex-col gap-2">
             <Label>Duration</Label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
               {DURATIONS.map((d) => (
                 <button
                   key={d}
                   type="button"
                   onClick={() => setDuration(d)}
                   className={cn(
-                    "rounded-[12px] border px-3 py-2.5 text-sm font-medium transition-colors",
+                    "rounded-[12px] border px-2 py-2.5 text-xs font-medium transition-colors sm:text-sm",
                     duration === d
                       ? "border-accent/60 bg-accent/15 text-foreground"
                       : "border-white/[0.08] bg-muted/40 text-muted-foreground hover:bg-muted",

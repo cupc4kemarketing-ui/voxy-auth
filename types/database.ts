@@ -1,4 +1,4 @@
-export type LicenseDuration = "14_days" | "30_days" | "lifetime";
+export type LicenseDuration = "1_day" | "7_days" | "14_days" | "30_days" | "lifetime";
 export type LicenseKeyStatus = "unused" | "redeemed" | "disabled";
 export type LicenseStatus = "active" | "expired" | "revoked";
 
