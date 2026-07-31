@@ -1,36 +1,120 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Voxy — Client Website & License Portal
 
-## Getting Started
+A production-ready Next.js 15 (App Router) site for the Voxy Minecraft client: landing page,
+Discord-only auth, a licensing/redeem system, a download portal, and an admin panel — all backed
+by Supabase.
 
-First, run the development server:
+## Tech stack
+
+- Next.js 15 (App Router) + TypeScript
+- Tailwind CSS v4
+- Framer Motion
+- Lucide Icons
+- shadcn-style UI primitives (Radix UI under the hood)
+- Supabase (Postgres, Auth, Storage)
+- Discord OAuth
+
+## 1. Create your Supabase project
+
+1. Go to [supabase.com](https://supabase.com) and create a new project.
+2. Open **SQL Editor** and run the entire contents of [`supabase/schema.sql`](./supabase/schema.sql).
+   This creates all tables (`profiles`, `admins`, `license_keys`, `licenses`, `downloads`,
+   `releases`), triggers, and Row Level Security policies.
+3. Open **Storage** and create a new **private** bucket named `client-builds`. This is where the
+   actual Voxy `.jar` release files are uploaded. Upload a build, e.g. to
+   `releases/1.0.0/voxy.jar`.
+4. Insert a matching release row in the SQL editor:
+
+   ```sql
+   insert into public.releases (version, changelog, file_path, is_latest)
+   values ('1.0.0', '- Initial public release', 'releases/1.0.0/voxy.jar', true);
+   ```
+
+## 2. Configure Discord OAuth
+
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) and create
+   a new application.
+2. Under **OAuth2**, copy the **Client ID** and **Client Secret**.
+3. Add this redirect URL under **OAuth2 → Redirects**:
+   `https://YOUR_PROJECT_REF.supabase.co/auth/v1/callback`
+4. In your Supabase project, go to **Authentication → Providers → Discord**, enable it, and paste
+   in the Client ID and Client Secret from Discord.
+5. In **Authentication → URL Configuration**, set your **Site URL** to your deployed domain (or
+   `http://localhost:3000` while developing) and add both
+   `http://localhost:3000/auth/callback` and `https://your-domain.com/auth/callback` to the
+   **Redirect URLs** allow list.
+
+## 3. Environment variables
+
+Copy `.env.local.example` to `.env.local` and fill in the values from **Supabase → Project
+Settings → API**:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.local.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+| Variable | Where to find it |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Project Settings → API → Project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Project Settings → API → `anon` `public` key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API → `service_role` key (**secret**, never expose to the browser) |
+| `NEXT_PUBLIC_SITE_URL` | Your site's base URL (`http://localhost:3000` locally) |
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+These are the **only** three Supabase values you need to wire in — the anon key and URL are safe
+to expose (`NEXT_PUBLIC_*`), the service role key must stay server-only and is already only
+imported from files marked `import "server-only"`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 4. Run locally
 
-## Learn More
+```bash
+npm install
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Visit `http://localhost:3000`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 5. Make yourself an admin
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+After logging in once via Discord (so your `profiles` row exists), find your user id in the
+**Table Editor → profiles** table, then run:
 
-## Deploy on Vercel
+```sql
+insert into public.admins (user_id)
+values ('YOUR-PROFILE-UUID-HERE');
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+You'll now see an **Admin** link in the dashboard nav and can generate/manage license keys at
+`/admin`.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 6. Deploy to Vercel
+
+1. Push this repo to GitHub.
+2. Import it into [Vercel](https://vercel.com/new).
+3. Add the same four environment variables from step 3 in the Vercel project settings.
+4. Set `NEXT_PUBLIC_SITE_URL` to your production domain, and add
+   `https://your-domain.com/auth/callback` to Supabase's redirect URL allow list (step 2.5).
+5. Deploy — no further code changes needed.
+
+## How the licensing system works
+
+- Admins generate keys (`VOXY-XXXX-XXXX-XXXX`) for a duration (`14_days`, `30_days`, `lifetime`)
+  in `/admin`.
+- A user redeems a key at `/dashboard/redeem`. The `/api/redeem` route atomically claims the key
+  (`status: unused → redeemed`) using the Supabase **service role** client, then creates a row in
+  `licenses` with the computed expiration.
+- `/dashboard/download` and `/api/download` re-verify the user has a non-expired active license
+  server-side (never trusting any client state) before generating a short-lived signed URL to the
+  private `client-builds` storage bucket and logging the download.
+- Downloaded files are always named `USERNAME-Voxy.jar`.
+
+## Security notes
+
+- All Supabase mutations that matter (redeeming a key, generating/deleting keys, issuing
+  downloads) happen in server-only Route Handlers using the service-role client — the browser
+  never has enough permission to fabricate a subscription.
+- `middleware.ts` refreshes the Supabase session and redirects unauthenticated users away from
+  `/dashboard/*` and `/admin/*`.
+- `/admin/*` additionally re-checks `admins` table membership server-side on every request (layout
+  + every API route), independent of the middleware redirect.
+- Row Level Security is enabled on every table as a defense-in-depth safety net, even though the
+  app's own mutations go through the service role key.
