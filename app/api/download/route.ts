@@ -47,10 +47,11 @@ export async function GET() {
   const filename = `${safeUsername}-cobalt.${release.version}.jar`;
 
   const { data: jarBlob, error: downloadError } = await admin.storage
-    .from("client-builds")
+    .from("Files")
     .download(release.file_path);
 
   if (downloadError || !jarBlob) {
+    console.error("Failed to download release from storage:", downloadError);
     return NextResponse.json({ error: "Failed to load the release build." }, { status: 500 });
   }
 
