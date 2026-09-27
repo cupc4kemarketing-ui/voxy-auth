@@ -55,6 +55,25 @@ export type Release = {
   released_at: string;
 };
 
+export type SharedConfig = {
+  id: string;
+  user_id: string;
+  name: string;
+  code: string;
+  share_code: string;
+  created_at: string;
+};
+
+export type ConfigCode = {
+  id: string;
+  user_id: string;
+  name: string;
+  code: string;
+  code_hash: string;
+  share_code: string;
+  created_at: string;
+};
+
 type TableDef<Row> = {
   Row: Row;
   Insert: Partial<Row>;
@@ -90,6 +109,34 @@ export type Database = {
       licenses: TableDef<License>;
       downloads: TableDef<Download>;
       releases: TableDef<Release>;
+      shared_configs: {
+        Row: SharedConfig;
+        Insert: Partial<SharedConfig>;
+        Update: Partial<SharedConfig>;
+        Relationships: [
+          {
+            foreignKeyName: "shared_configs_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      config_codes: {
+        Row: ConfigCode;
+        Insert: Partial<ConfigCode>;
+        Update: Partial<ConfigCode>;
+        Relationships: [
+          {
+            foreignKeyName: "config_codes_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

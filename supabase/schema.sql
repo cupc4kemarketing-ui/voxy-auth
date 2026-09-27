@@ -102,6 +102,55 @@ create table if not exists public.releases (
 );
 
 -- ============================================================================
+-- TABLE: shared_configs
+-- Cobalt client config codes voluntarily published by a license holder for
+-- other users to browse/import (the "Public Configs" tab in the client's
+-- Config menu) OR redeem directly by a short share code. `code` is the exact
+-- gzip+base64 blob the client already generates for manual export/import —
+-- the server never parses or interprets it, just stores and serves it back.
+-- `share_code` is a short (5-char) human-typeable code — see
+-- app/api/config/redeem — that stands in for pasting the whole blob.
+-- Publishing/unpublishing always goes through server routes (see
+-- app/api/config/*) that resolve the publisher from their Cobalt licenseId,
+-- since the client has no Supabase auth session of its own to key ownership
+-- off of. Redeeming by share_code needs no license — same trust level as
+-- already having the full code pasted into you.
+-- ============================================================================
+create table if not exists public.shared_configs (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null references public.profiles (id) on delete cascade,
+  name          text not null,
+  code          text not null,
+  share_code    text not null unique,
+  created_at    timestamptz not null default now()
+);
+
+create index if not exists shared_configs_user_id_idx on public.shared_configs (user_id);
+create index if not exists shared_configs_created_at_idx on public.shared_configs (created_at desc);
+create unique index if not exists shared_configs_share_code_idx on public.shared_configs (share_code);
+
+-- ============================================================================
+-- TABLE: config_codes
+-- Private short codes for a license holder's OWN configs (the "copy code"
+-- button on each card in the client's My Configs tab). Unlike shared_configs
+-- these are never listed anywhere — the 6-character code is the only way to
+-- reach one, handed to whoever the owner chooses. Re-copying the same config
+-- returns the same code (unique on user_id + code_hash).
+-- ============================================================================
+create table if not exists public.config_codes (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null references public.profiles (id) on delete cascade,
+  name          text not null,
+  code          text not null,
+  code_hash     text not null,
+  share_code    text not null unique,
+  created_at    timestamptz not null default now(),
+  unique (user_id, code_hash)
+);
+
+create index if not exists config_codes_user_id_idx on public.config_codes (user_id, created_at desc);
+
+-- ============================================================================
 -- FUNCTION + TRIGGER: auto-create a profile row when a user signs in via
 -- Discord OAuth for the first time.
 -- ============================================================================
@@ -178,6 +227,8 @@ alter table public.license_keys enable row level security;
 alter table public.licenses     enable row level security;
 alter table public.downloads    enable row level security;
 alter table public.releases     enable row level security;
+alter table public.shared_configs enable row level security;
+alter table public.config_codes   enable row level security;
 
 -- profiles: a user can read/update only their own profile; admins can read all
 drop policy if exists "profiles_select_own_or_admin" on public.profiles;
@@ -237,6 +288,25 @@ create policy "releases_select_authenticated"
 drop policy if exists "releases_admin_write" on public.releases;
 create policy "releases_admin_write"
   on public.releases for all
+  using (public.is_admin(auth.uid()))
+  with check (public.is_admin(auth.uid()));
+
+-- shared_configs: publish/unpublish/browse all go through server routes using
+-- the service role key (see app/api/config/*), which resolve the publisher
+-- from a Cobalt licenseId rather than a Supabase auth.uid() — the client has
+-- no browser session at all. RLS here is pure defense-in-depth (admin-only
+-- via the anon/authenticated roles), same posture as license_keys above.
+drop policy if exists "shared_configs_admin_all" on public.shared_configs;
+create policy "shared_configs_admin_all"
+  on public.shared_configs for all
+  using (public.is_admin(auth.uid()))
+  with check (public.is_admin(auth.uid()));
+
+-- config_codes: same posture as shared_configs — only ever touched through
+-- app/api/config/share and app/api/config/redeem with the service role key.
+drop policy if exists "config_codes_admin_all" on public.config_codes;
+create policy "config_codes_admin_all"
+  on public.config_codes for all
   using (public.is_admin(auth.uid()))
   with check (public.is_admin(auth.uid()));
 

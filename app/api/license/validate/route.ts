@@ -24,5 +24,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ valid: false, reason: "License is no longer active." });
   }
 
-  return NextResponse.json({ valid: true, expiresAt: license.expires_at });
+  // Surfaced so the client can show/hide admin-only UI (e.g. publishing to the Public Configs
+  // list) — this is a UX convenience only, NOT the enforcement point. /api/config/publish
+  // independently re-checks admin membership server-side before actually accepting a publish, so
+  // a modified client claiming isAdmin can't actually publish anything.
+  const { data: adminRow } = await admin.from("admins").select("user_id").eq("user_id", license.user_id).maybeSingle();
+
+  return NextResponse.json({ valid: true, expiresAt: license.expires_at, isAdmin: !!adminRow });
 }
