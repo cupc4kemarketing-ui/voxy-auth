@@ -36,6 +36,8 @@ export type License = {
   started_at: string;
   expires_at: string | null;
   created_at: string;
+  hwid: string | null;
+  hwid_locked_at: string | null;
 };
 
 export type Download = {

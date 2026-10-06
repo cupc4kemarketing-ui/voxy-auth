@@ -68,11 +68,21 @@ create table if not exists public.licenses (
   status          public.license_status not null default 'active',
   started_at      timestamptz not null default now(),
   expires_at      timestamptz, -- null == lifetime
-  created_at      timestamptz not null default now()
+  created_at      timestamptz not null default now(),
+  -- HWID lock: null until the client first validates, then pinned to the first machine's
+  -- hardware fingerprint. /api/license/validate sets this on first contact and rejects any
+  -- other hwid afterwards, so one license only runs on one machine. Clear it (or use the
+  -- admin reset) to let a user legitimately move to new hardware.
+  hwid            text,
+  hwid_locked_at  timestamptz
 );
 
 create index if not exists licenses_user_id_idx on public.licenses (user_id);
 create index if not exists licenses_status_idx on public.licenses (status);
+
+-- Migration for existing projects (safe to re-run): add the HWID-lock columns if missing.
+alter table public.licenses add column if not exists hwid           text;
+alter table public.licenses add column if not exists hwid_locked_at timestamptz;
 
 -- ============================================================================
 -- TABLE: downloads
